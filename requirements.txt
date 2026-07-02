@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+fal-client
+slowapi
+python-multipart
+pydantic>=2
+aiofiles
+anthropic
+python-dotenv

@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Multi-Model Studio</title>
+  <style>
+    /* ── Reset & base ─────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0f0f11;
+      color: #e2e2e8;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ───────────────────────────────────────────────────── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 28px;
+      background: #18181b;
+      border-bottom: 1px solid #2a2a2f;
+    }
+    header h1 { font-size: 1.1rem; font-weight: 600; letter-spacing: -0.02em; }
+    #credit-badge {
+      font-size: 0.85rem;
+      background: #27272a;
+      border: 1px solid #3f3f46;
+      border-radius: 9999px;
+      padding: 4px 14px;
+      color: #a1a1aa;
+    }
+    #credit-badge span { color: #fbbf24; font-weight: 600; }
+
+    /* ── Main layout ──────────────────────────────────────────────── */
+    main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      gap: 0;
+    }
+
+    /* ── Sidebar (controls) ───────────────────────────────────────── */
+    aside {
+      background: #18181b;
+      border-right: 1px solid #2a2a2f;
+      padding: 24px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    label { font-size: 0.78rem; color: #a1a1aa; text-transform: uppercase; letter-spacing: 0.06em; }
+
+    select, textarea {
+      background: #27272a;
+      border: 1px solid #3f3f46;
+      border-radius: 8px;
+      color: #e2e2e8;
+      font-size: 0.9rem;
+      padding: 8px 12px;
+      width: 100%;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    select:focus, textarea:focus { border-color: #6366f1; }
+    textarea { resize: vertical; min-height: 100px; font-family: inherit; line-height: 1.5; }
+
+    /* Variation pills */
+    .pill-group { display: flex; gap: 8px; }
+    .pill {
+      flex: 1;
+      padding: 7px 0;
+      text-align: center;
+      border-radius: 8px;
+      border: 1px solid #3f3f46;
+      background: #27272a;
+      color: #a1a1aa;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: all 0.15s;
+    }
+    .pill.active { background: #6366f1; border-color: #6366f1; color: #fff; font-weight: 600; }
+
+    /* Submit button */
+    #btn-generate {
+      width: 100%;
+      padding: 12px;
+      border-radius: 10px;
+      border: none;
+      background: #6366f1;
+      color: #fff;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, opacity 0.15s;
+      margin-top: 4px;
+    }
+    #btn-generate:hover:not(:disabled) { background: #4f46e5; }
+    #btn-generate:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    #cost-preview {
+      text-align: center;
+      font-size: 0.8rem;
+      color: #71717a;
+      min-height: 18px;
+    }
+    #cost-preview .highlight { color: #fbbf24; font-weight: 600; }
+
+    /* ── Output area ──────────────────────────────────────────────── */
+    section#output {
+      padding: 28px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    #status-bar {
+      font-size: 0.85rem;
+      color: #71717a;
+      min-height: 20px;
+    }
+    #status-bar.running { color: #818cf8; }
+    #status-bar.error   { color: #f87171; }
+    #status-bar.done    { color: #4ade80; }
+
+    /* Spinner */
+    .spinner {
+      display: inline-block;
+      width: 12px; height: 12px;
+      border: 2px solid #818cf8;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Image grid */
+    #image-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 14px;
+    }
+
+    .img-card {
+      border-radius: 12px;
+      overflow: hidden;
+      background: #27272a;
+      border: 1px solid #2a2a2f;
+      position: relative;
+      aspect-ratio: 1;
+    }
+    /* Shimmer shown while image is loading */
+    .img-card::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, #27272a 25%, #32323a 50%, #27272a 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.4s infinite;
+      z-index: 0;
+    }
+    @keyframes shimmer { to { background-position: -200% 0; } }
+    .img-card img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      position: relative;
+      z-index: 1;
+      transition: transform 0.2s;
+      /* Hide until loaded so the shimmer shows through */
+      opacity: 0;
+      transition: opacity 0.3s, transform 0.2s;
+    }
+    .img-card img.loaded { opacity: 1; }
+    .img-card:hover img { transform: scale(1.03); }
+
+    .img-card .overlay {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      padding: 10px;
+      background: linear-gradient(transparent, rgba(0,0,0,0.8));
+      display: flex;
+      justify-content: flex-end;
+      gap: 6px;
+      z-index: 2;
+    }
+    .overlay a, .overlay button {
+      font-size: 0.75rem;
+      color: #fff;
+      text-decoration: none;
+      background: rgba(255,255,255,0.15);
+      border: none;
+      padding: 4px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .overlay a:hover, .overlay button:hover { background: rgba(255,255,255,0.3); }
+
+    /* Failed state */
+    .img-card.failed { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+    .img-card.failed .fail-msg { font-size: 0.8rem; color: #71717a; z-index: 2; position: relative; }
+    .img-card.failed .retry-btn {
+      font-size: 0.8rem; background: #3f3f46; border: 1px solid #52525b;
+      color: #e2e2e8; padding: 6px 14px; border-radius: 8px;
+      cursor: pointer; z-index: 2; position: relative;
+    }
+    .img-card.failed .retry-btn:hover { background: #52525b; }
+
+    /* ── Email Builder ────────────────────────────────────────────────── */
+    #email-builder {
+      border-top: 1px solid #2a2a2f;
+      padding-top: 24px;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .builder-header {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #a1a1aa;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+    }
+    .builder-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      align-items: end;
+    }
+    #email-builder input {
+      background: #27272a;
+      border: 1px solid #3f3f46;
+      border-radius: 8px;
+      color: #e2e2e8;
+      font-size: 0.9rem;
+      padding: 8px 12px;
+      width: 100%;
+      outline: none;
+      font-family: inherit;
+      transition: border-color 0.15s;
+    }
+    #email-builder input:focus { border-color: #6366f1; }
+    #btn-email {
+      width: 100%;
+      padding: 9px 12px;
+      border-radius: 8px;
+      border: 1px solid #6366f1;
+      background: transparent;
+      color: #818cf8;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.15s, color 0.15s;
+    }
+    #btn-email:hover:not(:disabled) { background: #6366f1; color: #fff; }
+    #btn-email:disabled { opacity: 0.5; cursor: not-allowed; }
+    #email-status { font-size: 0.85rem; color: #818cf8; }
+    #email-status.error { color: #f87171; }
+    .preview-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.82rem;
+      color: #71717a;
+    }
+    .preview-toolbar div { display: flex; gap: 8px; }
+    .preview-toolbar button {
+      font-size: 0.8rem;
+      background: #27272a;
+      border: 1px solid #3f3f46;
+      color: #e2e2e8;
+      padding: 5px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .preview-toolbar button:hover { background: #3f3f46; }
+    #email-iframe {
+      width: 100%;
+      height: 640px;
+      border: 1px solid #2a2a2f;
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    /* Empty state */
+    #empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      flex: 1;
+      color: #3f3f46;
+      gap: 10px;
+      user-select: none;
+    }
+    #empty-state svg { width: 56px; height: 56px; opacity: 0.4; }
+    #empty-state p { font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+
+<!-- ── HEADER ───────────────────────────────────────────────────────── -->
+<header>
+  <h1>Visual Studio AI</h1>
+  <div id="credit-badge">Credits: <span id="credit-count">…</span></div>
+</header>
+
+<!-- ── MAIN ─────────────────────────────────────────────────────────── -->
+<main>
+
+  <!-- SIDEBAR -->
+  <aside>
+
+    <div class="field">
+      <label>Model</label>
+      <select id="sel-model">
+        <option value="">Loading…</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>Aspect Ratio</label>
+      <select id="sel-ratio">
+        <option value="">Loading…</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>Variations</label>
+      <div class="pill-group" id="pill-group">
+        <div class="pill active" data-val="1">1</div>
+        <div class="pill" data-val="2">2</div>
+        <div class="pill" data-val="3">3</div>
+        <div class="pill" data-val="4">4</div>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Prompt</label>
+      <textarea id="inp-prompt" placeholder="Describe the image you want…"></textarea>
+    </div>
+
+    <div id="cost-preview">Select a model to see cost</div>
+
+    <button id="btn-generate">Generate</button>
+
+  </aside>
+
+  <!-- OUTPUT -->
+  <section id="output">
+    <div id="status-bar"></div>
+    <div id="image-grid"></div>
+
+    <!-- EMAIL BUILDER — appears after a successful generation -->
+    <div id="email-builder" style="display:none">
+      <div class="builder-header">Build Email from this Image</div>
+      <div class="builder-row">
+        <div class="field">
+          <label>Company Name</label>
+          <input type="text" id="eb-company" placeholder="Ackuaa" />
+        </div>
+        <div class="field">
+          <label>Tagline</label>
+          <input type="text" id="eb-tagline" placeholder="Pure. Cold. Himalayan." />
+        </div>
+      </div>
+      <div class="builder-row">
+        <div class="field">
+          <label>Brand Tone</label>
+          <select id="eb-tone">
+            <option value="luxury">Luxury</option>
+            <option value="minimal">Minimal</option>
+            <option value="bold">Bold</option>
+            <option value="playful">Playful</option>
+          </select>
+        </div>
+        <div class="field">
+          <button id="btn-email">Generate Email</button>
+        </div>
+      </div>
+      <div id="email-status" style="display:none"></div>
+      <div id="email-preview-wrap" style="display:none">
+        <div class="preview-toolbar">
+          <span>Email Preview</span>
+          <div>
+            <button onclick="copyEmailHtml()">Copy HTML</button>
+            <button onclick="downloadEmailHtml()">Download HTML</button>
+          </div>
+        </div>
+        <iframe id="email-iframe" sandbox="allow-same-origin"></iframe>
+      </div>
+    </div>
+
+    <div id="empty-state">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"
+          d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+      </svg>
+      <p>Your generated images will appear here</p>
+    </div>
+  </section>
+
+</main>
+
+<script>
+  // ── CONFIG ─────────────────────────────────────────────────────────
+  const API = "";   // same origin — FastAPI serves both UI and API
+  const POLL_MS = 4000;                  // how often to check if the image is ready
+
+  // ── STATE ──────────────────────────────────────────────────────────
+  let variations = 1;              // currently selected number of images to generate
+  let polling = null;              // holds the setInterval ID so we can clear it
+  let timer = null;                // elapsed-time counter interval
+  let elapsed = 0;                 // seconds since generation started
+  let renderedCount = 0;           // how many images have been added to the grid already
+  let lastGeneratedImageUrl = null; // first image from the last generation, used by email builder
+  let emailHtml = "";              // the Claude-generated HTML, kept for copy/download
+
+  // ── DOM REFS ───────────────────────────────────────────────────────
+  // We grab all the HTML elements we need once, then reuse these variables.
+  const selModel   = document.getElementById("sel-model");
+  const selRatio   = document.getElementById("sel-ratio");
+  const inpPrompt  = document.getElementById("inp-prompt");
+  const btnGen     = document.getElementById("btn-generate");
+  const costPrev   = document.getElementById("cost-preview");
+  const statusBar  = document.getElementById("status-bar");
+  const imageGrid  = document.getElementById("image-grid");
+  const emptyState = document.getElementById("empty-state");
+  const creditSpan = document.getElementById("credit-count");
+
+  // ── BOOT ───────────────────────────────────────────────────────────
+  // When the page loads, fetch config (models + ratios) and user credits.
+  // Promise.all runs both fetch calls at the same time (parallel), then
+  // waits until BOTH are done before running the callback.
+  Promise.all([
+    fetch(`${API}/config`).then(r => r.json()),
+    fetch(`${API}/me`).then(r => r.json()),
+  ]).then(([cfg, me]) => {
+    // Populate the Model dropdown from the server's list
+    selModel.innerHTML = cfg.models
+      .map(m => `<option value="${m}">${m}</option>`)
+      .join("");
+
+    // Populate the Aspect Ratio dropdown
+    selRatio.innerHTML = cfg.aspect_ratios
+      .map(r => `<option value="${r}">${r}</option>`)
+      .join("");
+
+    // Show the user's credits
+    creditSpan.textContent = me.credits;
+
+    // Trigger the cost estimate for the default selection
+    updateEstimate();
+  });
+
+  // ── VARIATION PILLS ────────────────────────────────────────────────
+  // When a pill is clicked: mark it active, update the `variations` variable,
+  // then refresh the cost estimate.
+  document.getElementById("pill-group").addEventListener("click", e => {
+    const pill = e.target.closest(".pill");
+    if (!pill) return;                    // clicked between pills — do nothing
+    document.querySelectorAll(".pill").forEach(p => p.classList.remove("active"));
+    pill.classList.add("active");
+    variations = Number(pill.dataset.val); // dataset.val reads the data-val="1" attribute
+    updateEstimate();
+  });
+
+  // Re-estimate whenever the model or ratio changes
+  selModel.addEventListener("change", updateEstimate);
+  selRatio.addEventListener("change", updateEstimate);
+
+  // ── ESTIMATE ───────────────────────────────────────────────────────
+  // Calls POST /estimate and updates the cost preview text.
+  function updateEstimate() {
+    const model = selModel.value;
+    const ratio = selRatio.value;
+    if (!model || !ratio) return;
+
+    fetch(`${API}/estimate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      // JSON.stringify converts a JS object to a JSON string for the request body
+      body: JSON.stringify({ model, aspect_ratio: ratio, num_variations: variations }),
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data.credits === 0) {
+          costPrev.innerHTML = `<span class="highlight">Free</span> — no API key needed`;
+        } else {
+          costPrev.innerHTML = `Cost: <span class="highlight">${data.credits} credits</span>`;
+        }
+      })
+      .catch(() => { costPrev.textContent = "Could not estimate cost"; });
+  }
+
+  // ── GENERATE ───────────────────────────────────────────────────────
+  btnGen.addEventListener("click", () => {
+    const model  = selModel.value;
+    const ratio  = selRatio.value;
+    const prompt = inpPrompt.value.trim();
+
+    if (!prompt) {
+      setStatus("error", "Please enter a prompt first.");
+      return;
+    }
+
+    // Disable button while generating so the user can't double-submit
+    btnGen.disabled = true;
+    imageGrid.innerHTML = "";
+    renderedCount = 0;
+    emptyState.style.display = "none";
+    document.getElementById("email-builder").style.display = "none";
+    document.getElementById("email-preview-wrap").style.display = "none";
+    document.getElementById("email-status").style.display = "none";
+    startTimer();
+    setStatus("running", "Sending request…");
+
+    // POST /generate — the server responds immediately with a job_id
+    fetch(`${API}/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model,
+        aspect_ratio: ratio,
+        num_variations: variations,
+        prompt,
+      }),
+    })
+      .then(r => {
+        // r.ok is true for 2xx status codes (200, 201, etc.)
+        if (!r.ok) return r.json().then(e => Promise.reject(e));
+        return r.json();
+      })
+      .then(data => {
+        setStatus("running", `Generating… (${elapsed}s)`);
+        pollJob(data.job_id);
+      })
+      .catch(err => {
+        const msg = err?.detail || "Request failed";
+        setStatus("error", msg);
+        btnGen.disabled = false;
+        emptyState.style.display = "flex";
+      });
+  });
+
+  // ── POLL ───────────────────────────────────────────────────────────
+  // Checks GET /jobs/{job_id} every POLL_MS milliseconds until done or error.
+  function pollJob(jobId) {
+    if (polling) clearInterval(polling);
+
+    polling = setInterval(() => {
+      fetch(`${API}/jobs/${jobId}`)
+        .then(r => r.json())
+        .then(job => {
+          // Render any images that arrived since the last poll tick
+          const images = job.images || [];
+          if (images.length > renderedCount) {
+            images.slice(renderedCount).forEach(url => addImageCard(url));
+            renderedCount = images.length;
+          }
+
+          if (job.status === "running") {
+            setStatus("running", `Generating… (${elapsed}s) — ${renderedCount}/${variations} ready`);
+            return;
+          }
+
+          clearInterval(polling);
+          stopTimer();
+          polling = null;
+          btnGen.disabled = false;
+
+          if (job.status === "done") {
+            setStatus("done", `Done in ${elapsed}s — ${job.images.length} image(s) generated`);
+            refreshCredits();
+            if (job.images.length > 0) {
+              lastGeneratedImageUrl = job.images[0];
+              const eb = document.getElementById("email-builder");
+              eb.style.display = "flex";
+            }
+          } else {
+            setStatus("error", job.error || "Generation failed.");
+            emptyState.style.display = "flex";
+          }
+        })
+        .catch(() => {
+          clearInterval(polling);
+          stopTimer();
+          polling = null;
+          btnGen.disabled = false;
+          setStatus("error", "Lost connection to server.");
+          emptyState.style.display = "flex";
+        });
+    }, POLL_MS);
+  }
+
+  // ── RENDER ─────────────────────────────────────────────────────────
+  // Adds a single image card to the grid. Called once per image as it arrives.
+  function addImageCard(url) {
+    const card = document.createElement("div");
+    card.className = "img-card";
+
+    const img = document.createElement("img");
+    img.alt = "Generated image";
+    img.src = url;
+    img.onload = () => img.classList.add("loaded");
+
+    const overlay = document.createElement("div");
+    overlay.className = "overlay";
+
+    const openBtn = document.createElement("button");
+    openBtn.textContent = "Open";
+    openBtn.addEventListener("click", () => openImage(url));
+
+    const dlBtn = document.createElement("button");
+    dlBtn.textContent = "Download";
+    dlBtn.addEventListener("click", () => downloadImage(url));
+
+    overlay.appendChild(openBtn);
+    overlay.appendChild(dlBtn);
+    card.appendChild(img);
+    card.appendChild(overlay);
+    imageGrid.appendChild(card);
+  }
+
+  // ── HELPERS ────────────────────────────────────────────────────────
+  // Updates the status bar with the right colour class and optional spinner.
+  function setStatus(type, msg) {
+    statusBar.className = `${type}`;
+    statusBar.innerHTML = type === "running"
+      ? `<span class="spinner"></span>${msg}`
+      : msg;
+  }
+
+  function startTimer() {
+    elapsed = 0;
+    if (timer) clearInterval(timer);
+    timer = setInterval(() => elapsed++, 1000);
+  }
+
+  function stopTimer() {
+    clearInterval(timer);
+    timer = null;
+  }
+
+  // Re-fetches /me and updates the credit count in the header.
+  function refreshCredits() {
+    fetch(`${API}/me`).then(r => r.json()).then(me => {
+      creditSpan.textContent = me.credits;
+    });
+  }
+
+  // Chrome blocks data: URIs in new tabs for security. We open a blank tab and
+  // write an <img> into it instead.
+  function openImage(url) {
+    const win = window.open("", "_blank");
+    win.document.write(
+      `<html><body style="margin:0;background:#000;display:flex;align-items:center;justify-content:center;min-height:100vh">` +
+      `<img src="${url}" style="max-width:100%;max-height:100vh;object-fit:contain">` +
+      `</body></html>`
+    );
+    win.document.close();
+  }
+
+  // ── EMAIL BUILDER ──────────────────────────────────────────────────────────
+  document.getElementById("btn-email").addEventListener("click", () => {
+    const company = document.getElementById("eb-company").value.trim();
+    const tagline = document.getElementById("eb-tagline").value.trim();
+    const tone    = document.getElementById("eb-tone").value;
+
+    if (!company) {
+      const s = document.getElementById("email-status");
+      s.textContent = "Please enter a company name.";
+      s.className = "error";
+      s.style.display = "block";
+      return;
+    }
+
+    const btnEmail   = document.getElementById("btn-email");
+    const emailStatus = document.getElementById("email-status");
+    btnEmail.disabled = true;
+    btnEmail.textContent = "Generating…";
+    emailStatus.className = "";
+    emailStatus.textContent = "Calling Claude to write your email — this takes ~10 seconds…";
+    emailStatus.style.display = "block";
+    document.getElementById("email-preview-wrap").style.display = "none";
+
+    fetch(`${API}/generate-email`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ company, tagline, tone }),
+    })
+      .then(r => {
+        if (!r.ok) return r.json().then(e => Promise.reject(e));
+        return r.json();
+      })
+      .then(data => {
+        emailHtml = data.html;
+        // Swap the placeholder with the actual product image data URI
+        if (lastGeneratedImageUrl) {
+          emailHtml = emailHtml.replaceAll("PRODUCT_IMAGE_PLACEHOLDER", lastGeneratedImageUrl);
+        }
+        const iframe = document.getElementById("email-iframe");
+        iframe.srcdoc = emailHtml;
+        emailStatus.style.display = "none";
+        document.getElementById("email-preview-wrap").style.display = "block";
+      })
+      .catch(err => {
+        emailStatus.className = "error";
+        emailStatus.textContent = "Error: " + (err?.detail || "Failed to generate email.");
+      })
+      .finally(() => {
+        btnEmail.disabled = false;
+        btnEmail.textContent = "Generate Email";
+      });
+  });
+
+  function copyEmailHtml() {
+    navigator.clipboard.writeText(emailHtml)
+      .then(() => alert("HTML copied to clipboard!"))
+      .catch(() => alert("Copy failed — please select the HTML and copy manually."));
+  }
+
+  function downloadEmailHtml() {
+    const blob = new Blob([emailHtml], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "email.html";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // Fetches the image as a blob so the browser saves it instead of opening it.
+  // The `download` attribute on <a> tags only works for same-origin URLs —
+  // cross-origin images (like Pollinations) are silently opened instead.
+  function downloadImage(url) {
+    fetch(url)
+      .then(r => r.blob())
+      .then(blob => {
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = blobUrl;
+        a.download = `generated-${Date.now()}.jpg`;
+        a.click();
+        URL.revokeObjectURL(blobUrl);  // free memory after download starts
+      })
+      .catch(() => alert("Download failed. Try right-clicking the image and saving manually."));
+  }
+</script>
+
+</body>
+</html>
