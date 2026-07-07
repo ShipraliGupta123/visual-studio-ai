@@ -46,3 +46,49 @@ Frontend (Next.js, same stack as before) calls:
   may differ slightly. Strings drift — confirm the day you build.
 - The **credit numbers are a display config**, loosely pegged to fal pricing
   (nano-banana-pro ≈ $0.15/img). Tune for the demo narrative.
+
+## Deploying to Railway
+This app is already Railway-ready: FastAPI + `Procfile` + `requirements.txt`,
+no local disk writes, frontend calls same-origin (`API = ""` in `index.html`).
+
+1. **Push to GitHub** — Railway deploys from a connected repo.
+2. **railway.app → New Project → Deploy from GitHub repo** → select this repo.
+   Railway's Nixpacks builder detects Python via `requirements.txt` and runs
+   the `Procfile` start command: `uvicorn app:app --host 0.0.0.0 --port $PORT`.
+3. **Add environment variables** (service → Variables tab), copied from your
+   local `.env` (never committed — it's gitignored):
+   - `FAL_KEY`
+   - `ANTHROPIC_API_KEY`
+4. **Settings → Networking → Generate Domain** for a public `*.up.railway.app` URL.
+5. Verify: page loads, `/config` returns models, a generation runs end-to-end,
+   and `/generate-email` returns HTML.
+
+No `runtime.txt` is pinned — Railway's Nixpacks default Python version is used.
+None of the current dependencies need a specific version, so this should build
+without extra config; add a `runtime.txt` only if a build fails on Python version.
+
+## Demo-only shortcuts — replace before real users touch this
+Everything below works for a POC/demo but will silently break or reset in a
+real deployment. None of it is Railway-specific — it'd need fixing on any host.
+
+- **Auth is fake.** `get_current_user()` in `app.py` always returns the same
+  hardcoded `FAKE_USER`. Every visitor shares one identity and one credit
+  balance. Replace with real auth (Clerk/Supabase/Auth.js) before multi-user use.
+- **Credits live in a Python dict, not a database.** `FAKE_USER["credits"]`
+  resets to 500 on every server restart/redeploy, and isn't shared across
+  multiple server instances/workers. No purchase flow exists.
+- **Jobs live in the `JOBS` dict in memory (`app.py`).** Same problem: a
+  restart wipes in-flight/completed generations, and it won't work if Railway
+  ever scales this to >1 instance (each instance has its own `JOBS`/`FAKE_USER`).
+  Needs Postgres/Redis to be real.
+- **Credit costs are a static lookup table** (`models.py`), not live provider
+  billing — a rough display number, not an accounting system.
+- **Rate limiting (`slowapi`, 5/minute) is per-process, in-memory** — resets on
+  restart and isn't shared across instances. Fine for a demo, not for abuse
+  protection at scale.
+- **CORS is wide open** (`allow_origins=["*"]` in `app.py`) since frontend and
+  API are same-origin today. Lock this down if the frontend ever moves to a
+  different origin.
+- **No file persistence for generated images** — everything is returned as a
+  data URI or a fal.ai-hosted URL. Fine as-is, but if you want a gallery/history
+  feature (3.6, already cut from scope) you'll need real storage (S3/R2/etc.).
